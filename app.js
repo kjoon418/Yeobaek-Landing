@@ -20,7 +20,7 @@ const BOOK = {
 
 const EXPERIENCES = [
   { id: "paragraph", name: "현재 문단 방식", mode: "tap", tutorial: "댓글을 보고 싶은 문단을 탭하세요. 같은 문단에 새 댓글도 남길 수 있어요." },
-  { id: "sentence-tap", name: "여러 문장—탭", mode: "tap", tutorial: "시작 문장과 마지막 문장을 차례로 탭한 뒤, ‘댓글 달기’를 누르세요." },
+  { id: "sentence-tap", name: "여러 문장—탭", mode: "tap", tutorial: "한 번 탭하면 댓글을 보고, 문장을 길게 누르면 범위 선택을 시작해요. 마지막 문장을 탭한 뒤 ‘댓글 달기’를 누르세요." },
   { id: "sentence-drag", name: "여러 문장—드래그", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 선택한 문장 전체에 댓글을 달 수 있어요." },
   { id: "sentence", name: "한 문장", mode: "tap", tutorial: "댓글을 보고 남기고 싶은 문장을 한 번 탭하세요." },
   { id: "words", name: "여러 단어", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직여 원하는 단어 범위를 고르세요." }
@@ -50,6 +50,10 @@ let selectionFrame = 0;
 let normalizingSelection = false;
 let suppressAnnotationClickUntil = 0;
 let noticeTimer = 0;
+let suppressedLongPressClick = null;
+
+const LONG_PRESS_DELAY = 550;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
 
 function defaultState() {
   return {
@@ -233,7 +237,7 @@ function renderReader() {
       <hr class="chapter-divider">
     </div>
     <p id="selection-notice" class="selection-notice" role="status" hidden></p>
-    <article id="reader-content" class="reader-content mode-${experience.mode}" aria-label="책 본문"></article>
+    <article id="reader-content" class="reader-content mode-${experience.mode} experience-${experience.id}" aria-label="책 본문"></article>
     <nav class="reader-nav" aria-label="체험 이동">
       <button class="secondary-button" id="previous-button" ${state.step === 0 ? "disabled" : ""}>이전</button>
       <button class="primary-button" id="next-button">${state.step === EXPERIENCES.length - 1 ? "완료" : "다음"}</button>
@@ -303,24 +307,100 @@ function renderSentence(text, passageIndex, sentenceIndex, sentence, annotations
     const dragTarget = currentExperience().mode === "drag" ? ` tabindex="0" role="button" aria-label="${ids.length}개의 댓글이 있는 글"` : "";
     inner += ids.length ? `<span class="annotation${ids.length > 1 ? " overlap" : ""}" data-comment-ids="${ids.join(",")}" data-offset="${start}"${dragTarget}>${content}</span>` : content;
   }
-  const sentenceInteractive = ["sentence-tap", "sentence"].includes(currentExperience().id) ? ` role="button" tabindex="0" aria-label="문장 댓글 보기 및 남기기"` : "";
+  const experienceId = currentExperience().id;
+  const sentenceLabel = experienceId === "sentence-tap"
+    ? "한 번 누르면 문장 댓글 보기, 길게 누르면 범위 선택 시작"
+    : "문장 댓글 보기 및 남기기";
+  const sentenceInteractive = ["sentence-tap", "sentence"].includes(experienceId) ? ` role="button" tabindex="0" aria-label="${sentenceLabel}"` : "";
   return `<span class="sentence" data-passage="${passageIndex}" data-sentence="${sentenceIndex}" data-start="${sentence.start}" data-end="${sentence.end}"${sentenceInteractive}>${inner}</span>${sentenceIndex < SENTENCES[passageIndex].length - 1 ? " " : ""}`;
 }
 
 function bindReaderEvents() {
   const reader = document.getElementById("reader-content");
   const experience = currentExperience();
-  const onClick = event => handleReaderActivation(event);
+  const onClick = event => {
+    const sentence = event.target.closest(".sentence");
+    if (experience.id === "sentence-tap" && suppressedLongPressClick?.sentence === sentence && Date.now() < suppressedLongPressClick.expiresAt) {
+      suppressedLongPressClick = null;
+      event.preventDefault();
+      return;
+    }
+    handleReaderActivation(event);
+  };
   const onKeydown = event => {
     if (!(["Enter", " "].includes(event.key))) return;
     const target = event.target.closest(".passage, .sentence, .annotation");
     if (!target || !reader.contains(target)) return;
     if (experience.mode === "drag" && !target.matches(".annotation")) return;
     event.preventDefault();
-    handleReaderActivation(event, target);
+    handleReaderActivation(event, target, "comments");
   };
   reader.addEventListener("click", onClick);
   reader.addEventListener("keydown", onKeydown);
+  if (experience.id === "sentence-tap") {
+    let press = null;
+    const cancelLongPress = () => {
+      if (!press) return;
+      clearTimeout(press.timer);
+      press = null;
+    };
+    const onPointerDown = event => {
+      const sentence = event.target.closest(".sentence");
+      if (!sentence || !event.isPrimary || event.button !== 0) return;
+      suppressedLongPressClick = null;
+      if (tapRange && !tapRange.complete) return;
+      cancelLongPress();
+      const pointerId = event.pointerId;
+      press = {
+        pointerId,
+        sentence,
+        startX: event.clientX,
+        startY: event.clientY,
+        triggered: false,
+        timer: setTimeout(() => {
+          if (!press || press.pointerId !== pointerId) return;
+          press.triggered = true;
+          tapRange = null;
+          selectTappedSentence(sentence);
+        }, LONG_PRESS_DELAY)
+      };
+    };
+    const onPointerMove = event => {
+      if (!press || event.pointerId !== press.pointerId) return;
+      if (Math.hypot(event.clientX - press.startX, event.clientY - press.startY) > LONG_PRESS_MOVE_TOLERANCE) cancelLongPress();
+    };
+    const onPointerUp = event => {
+      if (press?.pointerId !== event.pointerId) return;
+      if (press.triggered) suppressedLongPressClick = { sentence: press.sentence, expiresAt: Date.now() + 800 };
+      cancelLongPress();
+    };
+    const onPointerCancel = event => {
+      if (press?.pointerId === event.pointerId) cancelLongPress();
+    };
+    const onContextMenu = event => {
+      if (event.target.closest(".sentence")) event.preventDefault();
+    };
+    const onScroll = () => cancelLongPress();
+    reader.addEventListener("pointerdown", onPointerDown);
+    reader.addEventListener("pointermove", onPointerMove);
+    reader.addEventListener("pointerup", onPointerUp);
+    reader.addEventListener("pointercancel", onPointerCancel);
+    reader.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    readerCleanup = () => {
+      cancelLongPress();
+      suppressedLongPressClick = null;
+      reader.removeEventListener("click", onClick);
+      reader.removeEventListener("keydown", onKeydown);
+      reader.removeEventListener("pointerdown", onPointerDown);
+      reader.removeEventListener("pointermove", onPointerMove);
+      reader.removeEventListener("pointerup", onPointerUp);
+      reader.removeEventListener("pointercancel", onPointerCancel);
+      reader.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("scroll", onScroll);
+    };
+    return;
+  }
   if (experience.mode === "drag") {
     const onSelectionEnd = () => scheduleSelectionRead();
     const onViewportChange = () => scheduleSelectionRead();
@@ -355,7 +435,7 @@ function bindReaderEvents() {
   }
 }
 
-function handleReaderActivation(event, forcedOrigin = null) {
+function handleReaderActivation(event, forcedOrigin = null, activationIntent = "default") {
   const path = event.composedPath?.() || [];
   const origin = forcedOrigin || path.find(node => node instanceof Element && node.matches(".annotation")) || event.target;
   const sentence = origin.closest(".sentence");
@@ -389,36 +469,16 @@ function handleReaderActivation(event, forcedOrigin = null) {
     return;
   }
   if (experience.id === "sentence-tap") {
-    if (tapRange && !tapRange.complete) {
+    if (activationIntent !== "comments" && tapRange && !tapRange.complete) {
       selectTappedSentence(sentence);
     } else if (ids.length) {
-      openTapIntentChoice(ids, sentence);
+      const target = rangeForAnnotation(ids[0]);
+      if (shouldChooseRange(ids)) openRangeChooser(ids, rangeFromSentence(sentence));
+      else openCommentSheet(target, ids);
     } else {
-      selectTappedSentence(sentence);
+      openCommentSheet(rangeFromSentence(sentence));
     }
   }
-}
-
-function openTapIntentChoice(ids, sentence) {
-  openSheet(`<div class="sheet short" role="dialog" aria-modal="true" aria-labelledby="choice-title">
-    <div class="sheet-handle"></div>
-    <div class="sheet-header"><h2 id="choice-title">무엇을 할까요?</h2><button class="icon-button" data-sheet-close aria-label="닫기">×</button></div>
-    <div class="sheet-body choice-actions">
-      <button class="secondary-button" id="view-comment-choice">댓글 보기</button>
-      <button class="primary-button" id="start-range-choice">범위 선택 시작</button>
-    </div>
-  </div>`, () => {
-    document.getElementById("view-comment-choice").addEventListener("click", () => {
-      closeDialog();
-      if (shouldChooseRange(ids)) openRangeChooser(ids, rangeFromSentence(sentence));
-      else openCommentSheet(rangeForAnnotation(ids[0]), ids);
-    });
-    document.getElementById("start-range-choice").addEventListener("click", () => {
-      closeDialog();
-      tapRange = null;
-      selectTappedSentence(sentence);
-    });
-  });
 }
 
 function selectTappedSentence(sentence) {

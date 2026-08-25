@@ -108,11 +108,11 @@
   - Native-selection observer and contextual `댓글 달기` action.
   - Comment range annotation compositor with solid and double underline variants.
   - Short range-choice bottom sheet.
-  - For `여러 문장—탭`, tapping annotated text first shows `댓글 보기 / 범위 선택 시작`; this disambiguates viewing from selecting.
+  - For `여러 문장—탭`, one tap opens comments and a roughly 550 ms long-press starts sentence-range selection. Moving, scrolling, or cancelling the pointer aborts the long-press without blocking vertical scrolling.
   - Comment ranges use ordered start/end endpoints (`startPassage`, `startOffset`, `endPassage`, `endOffset`) so sentence-tap, sentence-drag, and word selection can cross paragraph boundaries. Existing session data using one-paragraph ranges is normalized when read.
 - Variants and states:
   - `현재 문단 방식`: tapping a paragraph opens its comments/input.
-  - `여러 문장—탭`: choose start/end sentences in either order, including across paragraphs, then use contextual `댓글 달기`.
+  - `여러 문장—탭`: tap once to view comments (including the existing overlap range chooser), or long-press any sentence to set the range start. Tap the end sentence in either direction, including across paragraphs, then use contextual `댓글 달기`. Keyboard Enter/Space remains comment viewing rather than range selection.
   - `여러 문장—드래그`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
   - `한 문장`: one tap opens the sentence's comments/input.
   - `여러 단어`: long-press/drag preserves the selected word range, then use contextual `댓글 달기`.
@@ -130,7 +130,7 @@
 
 - Supported breakpoints/devices: smartphone portrait layouts from approximately 320px to 430px; iPhone Safari and Android Chrome are the compatibility targets.
 - Layout adaptations: on wider viewports, keep a centered phone-width reader canvas rather than creating a desktop IA.
-- Touch/hover differences: touch is primary; hover is non-essential. Native browser selection handles remain browser-controlled.
+- Touch/hover differences: touch is primary; hover is non-essential. Native browser selection handles remain browser-controlled. Native callout is disabled only on `여러 문장—탭` sentences, whose pointer gesture keeps vertical pan available.
 
 ## Interaction states
 
