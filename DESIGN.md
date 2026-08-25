@@ -121,6 +121,7 @@
 ## Accessibility
 
 - Target standard: practical WCAG 2.2 AA for text, controls, focus, and dialogs.
+- Prototype exception: this one-off interview prototype uses restrictive viewport settings plus Safari gesture and multi-touch move prevention as a best-effort zoom guard, prioritizing controlled gesture testing over WCAG zoom accessibility; iOS/browser and OS-level accessibility zoom paths may still bypass it.
 - Keyboard/focus behavior: dialog focus is contained, Escape dismisses non-destructive overlays, and focus returns to the invoking control where applicable.
 - Contrast/readability: annotation underlines must remain visible without obscuring glyphs; overlap also changes line style so it does not rely on color alone.
 - Screen-reader semantics: experience state, buttons, dialog titles, comment ownership, and editable actions use explicit labels.

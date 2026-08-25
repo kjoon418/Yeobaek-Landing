@@ -872,5 +872,16 @@ function setModalState(open) {
   document.body.classList.toggle("modal-open", open);
 }
 
+function bindZoomPrevention() {
+  const preventZoom = event => event.preventDefault();
+  ["gesturestart", "gesturechange", "gestureend"].forEach(eventName => {
+    document.addEventListener(eventName, preventZoom, { passive: false });
+  });
+  document.addEventListener("touchmove", event => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive: false });
+}
+
+bindZoomPrevention();
 render();
 if (state.screen === "reader") window.setTimeout(maybeShowTutorial, 0);
