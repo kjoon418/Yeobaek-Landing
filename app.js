@@ -23,7 +23,7 @@ const EXPERIENCES = [
   { id: "sentence-tap", name: "여러 문장—탭", mode: "tap", tutorial: "한 번 탭하면 댓글을 보고, 문장을 길게 누르면 범위 선택을 시작해요. 마지막 문장을 탭한 뒤 ‘댓글 달기’를 누르세요." },
   { id: "sentence-drag", name: "여러 문장—드래그", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 선택한 문장 전체에 댓글을 달 수 있어요." },
   { id: "sentence", name: "한 문장", mode: "tap", tutorial: "댓글을 보고 남기고 싶은 문장을 한 번 탭하세요." },
-  { id: "words", name: "여러 단어", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직여 원하는 단어 범위를 고르세요." }
+  { id: "words", name: "여러 단어", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 공백으로 구분된 단어 단위로 범위를 고를 수 있어요." }
 ];
 
 const BASE_COMMENTS = [
@@ -515,6 +515,21 @@ function sentenceRangesIn(range) {
   return matches;
 }
 
+function wordRangesIn(range) {
+  const normalized = normalizeRange(range);
+  if (!normalized) return [];
+  const matches = [];
+  for (let passageIndex = normalized.startPassage; passageIndex <= normalized.endPassage; passageIndex += 1) {
+    for (const match of BOOK.passages[passageIndex].matchAll(/\S+/gu)) {
+      const word = { start: match.index, end: match.index + match[0].length };
+      const startsBeforeEnd = comparePoints(passageIndex, word.start, normalized.endPassage, normalized.endOffset) < 0;
+      const endsAfterStart = comparePoints(passageIndex, word.end, normalized.startPassage, normalized.startOffset) > 0;
+      if (startsBeforeEnd && endsAfterStart) matches.push({ passageIndex, word });
+    }
+  }
+  return matches;
+}
+
 function markSentencesInRange(range) {
   sentenceRangesIn(range).forEach(({ passageIndex, sentenceIndex }) => {
     document.querySelector(`.sentence[data-passage="${passageIndex}"][data-sentence="${sentenceIndex}"]`)?.classList.add("selected-range");
@@ -557,6 +572,18 @@ function readNativeSelection() {
       selectionTarget = makeRange(first.passageIndex, first.sentence.start, last.passageIndex, last.sentence.end);
       setDomSelection(selectionTarget, backward);
     }
+  } else if (currentExperience().id === "words") {
+    const touched = wordRangesIn(selectionTarget);
+    if (!touched.length) {
+      hideContextAction();
+      selectionTarget = null;
+      clearDomSelection();
+      return;
+    }
+    const first = touched[0];
+    const last = touched[touched.length - 1];
+    selectionTarget = makeRange(first.passageIndex, first.word.start, last.passageIndex, last.word.end);
+    setDomSelection(selectionTarget, backward);
   }
   const activeRange = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : range;
   const rect = selectionFocusRect(activeRange, backward);
@@ -594,6 +621,12 @@ function setDomSelection(target, backward = false) {
   } else {
     selection.addRange(range);
   }
+  requestAnimationFrame(() => { normalizingSelection = false; });
+}
+
+function clearDomSelection() {
+  normalizingSelection = true;
+  window.getSelection()?.removeAllRanges();
   requestAnimationFrame(() => { normalizingSelection = false; });
 }
 

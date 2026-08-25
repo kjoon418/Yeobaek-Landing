@@ -111,12 +111,13 @@
   - Bottom sheet handles and headers remain fixed while only the sheet body scrolls.
   - For `여러 문장—탭`, one tap opens comments and a roughly 550 ms long-press starts sentence-range selection. Moving, scrolling, or cancelling the pointer aborts the long-press without blocking vertical scrolling.
   - Comment ranges use ordered start/end endpoints (`startPassage`, `startOffset`, `endPassage`, `endOffset`) so sentence-tap, sentence-drag, and word selection can cross paragraph boundaries. Existing session data using one-paragraph ranges is normalized when read.
+  - Word selection snaps to maximal non-whitespace tokens (`/\S+/gu`): punctuation remains part of its adjacent token, outer whitespace is excluded, and whitespace between selected tokens remains in the range.
 - Variants and states:
   - `현재 문단 방식`: tapping a paragraph opens its comments/input.
   - `여러 문장—탭`: tap once to view comments (including the existing overlap range chooser), or long-press any sentence to set the range start. Tap the end sentence in either direction, including across paragraphs, then use contextual `댓글 달기`. Keyboard Enter/Space remains comment viewing rather than range selection.
   - `여러 문장—드래그`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
   - `한 문장`: one tap opens the sentence's comments/input.
-  - `여러 단어`: long-press/drag preserves the selected word range, then use contextual `댓글 달기`.
+  - `여러 단어`: long-press/drag snaps partial selections to whole whitespace-delimited words in either direction and across paragraphs, then use contextual `댓글 달기`; whitespace-only selections are cleared.
 - Token/component ownership: mobile app theme files remain canonical for brand tokens; web-only interaction tokens live with the prototype CSS.
 
 ## Accessibility
