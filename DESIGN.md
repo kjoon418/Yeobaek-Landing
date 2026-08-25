@@ -108,6 +108,7 @@
   - Native-selection observer and contextual `댓글 달기` action.
   - Comment range annotation compositor with solid and double underline variants.
   - Short range-choice bottom sheet.
+  - Bottom sheet handles and headers remain fixed while only the sheet body scrolls.
   - For `여러 문장—탭`, one tap opens comments and a roughly 550 ms long-press starts sentence-range selection. Moving, scrolling, or cancelling the pointer aborts the long-press without blocking vertical scrolling.
   - Comment ranges use ordered start/end endpoints (`startPassage`, `startOffset`, `endPassage`, `endOffset`) so sentence-tap, sentence-drag, and word selection can cross paragraph boundaries. Existing session data using one-paragraph ranges is normalized when read.
 - Variants and states:
