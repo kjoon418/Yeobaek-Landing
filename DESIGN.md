@@ -109,11 +109,11 @@
   - Comment range annotation compositor with solid and double underline variants.
   - Short range-choice bottom sheet.
   - For `여러 문장—탭`, tapping annotated text first shows `댓글 보기 / 범위 선택 시작`; this disambiguates viewing from selecting.
-  - Sentence and word ranges stay within one source paragraph in this one-off prototype. Crossing a paragraph boundary keeps the current selection and shows a short visible and screen-reader announcement instead of failing silently.
+  - Comment ranges use ordered start/end endpoints (`startPassage`, `startOffset`, `endPassage`, `endOffset`) so sentence-tap, sentence-drag, and word selection can cross paragraph boundaries. Existing session data using one-paragraph ranges is normalized when read.
 - Variants and states:
   - `현재 문단 방식`: tapping a paragraph opens its comments/input.
-  - `여러 문장—탭`: choose start/end sentences within one paragraph, then use contextual `댓글 달기`.
-  - `여러 문장—드래그`: long-press/drag within one paragraph, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
+  - `여러 문장—탭`: choose start/end sentences in either order, including across paragraphs, then use contextual `댓글 달기`.
+  - `여러 문장—드래그`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
   - `한 문장`: one tap opens the sentence's comments/input.
   - `여러 단어`: long-press/drag preserves the selected word range, then use contextual `댓글 달기`.
 - Token/component ownership: mobile app theme files remain canonical for brand tokens; web-only interaction tokens live with the prototype CSS.
@@ -145,14 +145,14 @@
 
 - Tone: concise, neutral, conversational Korean that assumes book-club familiarity.
 - Terminology: use the explicit labels `현재 문단 방식`, `여러 문장—탭`, `여러 문장—드래그`, `한 문장`, `여러 단어`.
-- Microcopy rules: tutorial overlays state only the gesture, the same-paragraph range boundary where relevant, and the next action; do not explain hypotheses, advantages, or disadvantages during the experience.
+- Microcopy rules: tutorial overlays state only the gesture and next action; do not explain hypotheses, advantages, or disadvantages during the experience.
 
 ## Implementation constraints
 
 - Framework/styling system: plain HTML, CSS, and JavaScript; no package manifest, framework, analytics, or runtime dependency.
 - Design-token constraints: derive web variables from the existing mobile theme rather than adding a separate design system.
 - Performance constraints: static assets only; avoid layout work proportional to anything beyond the ten passages and current annotations.
-- Compatibility constraints: mobile Safari and Chrome, native Selection API for drag modes, same-paragraph ranges, and session-scoped state that survives reload but resets when the tab session ends.
+- Compatibility constraints: mobile Safari and Chrome, native Selection API for drag modes, cross-paragraph ordered ranges, and session-scoped state that survives reload but resets when the tab session ends.
 - Test/screenshot expectations: validate logic directly, then exercise every flow at representative mobile Chromium and WebKit viewports and capture screenshots for visual review.
 
 ## Open questions

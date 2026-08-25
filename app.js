@@ -109,20 +109,62 @@ const SENTENCES = BOOK.passages.map(splitSentences);
 function exactRange(comment) {
   const text = BOOK.passages[comment.passage];
   const start = text.indexOf(comment.quote);
-  return { passage: comment.passage, start: start >= 0 ? start : SENTENCES[comment.passage][comment.focusSentence].start, end: start >= 0 ? start + comment.quote.length : SENTENCES[comment.passage][comment.focusSentence].end };
+  return makeRange(
+    comment.passage,
+    start >= 0 ? start : SENTENCES[comment.passage][comment.focusSentence].start,
+    comment.passage,
+    start >= 0 ? start + comment.quote.length : SENTENCES[comment.passage][comment.focusSentence].end
+  );
 }
 
 function rangeForComment(comment, experienceId) {
   const sentences = SENTENCES[comment.passage];
-  if (experienceId === "paragraph") return { passage: comment.passage, start: 0, end: BOOK.passages[comment.passage].length };
+  if (experienceId === "paragraph") return makeRange(comment.passage, 0, comment.passage, BOOK.passages[comment.passage].length);
   if (experienceId === "sentence-tap" || experienceId === "sentence-drag") {
-    return { passage: comment.passage, start: sentences[comment.multiStart].start, end: sentences[Math.min(comment.multiEnd, sentences.length - 1)].end };
+    return makeRange(comment.passage, sentences[comment.multiStart].start, comment.passage, sentences[Math.min(comment.multiEnd, sentences.length - 1)].end);
   }
   if (experienceId === "sentence") {
     const sentence = sentences[Math.min(comment.focusSentence, sentences.length - 1)];
-    return { passage: comment.passage, start: sentence.start, end: sentence.end };
+    return makeRange(comment.passage, sentence.start, comment.passage, sentence.end);
   }
   return exactRange(comment);
+}
+
+function comparePoints(firstPassage, firstOffset, secondPassage, secondOffset) {
+  return firstPassage === secondPassage ? firstOffset - secondOffset : firstPassage - secondPassage;
+}
+
+function makeRange(firstPassage, firstOffset, secondPassage, secondOffset) {
+  if (comparePoints(firstPassage, firstOffset, secondPassage, secondOffset) <= 0) {
+    return { startPassage: firstPassage, startOffset: firstOffset, endPassage: secondPassage, endOffset: secondOffset };
+  }
+  return { startPassage: secondPassage, startOffset: secondOffset, endPassage: firstPassage, endOffset: firstOffset };
+}
+
+function normalizeRange(range) {
+  if (!range) return null;
+  if (Number.isInteger(range.startPassage) && Number.isInteger(range.endPassage)) {
+    return makeRange(range.startPassage, range.startOffset, range.endPassage, range.endOffset);
+  }
+  if (Number.isInteger(range.passage)) return makeRange(range.passage, range.start, range.passage, range.end);
+  return null;
+}
+
+function rangeKey(range) {
+  const normalized = normalizeRange(range);
+  return normalized ? `${normalized.startPassage}:${normalized.startOffset}:${normalized.endPassage}:${normalized.endOffset}` : "";
+}
+
+function sameRange(first, second) {
+  return rangeKey(first) === rangeKey(second);
+}
+
+function rangeSliceForPassage(range, passageIndex) {
+  const normalized = normalizeRange(range);
+  if (!normalized || passageIndex < normalized.startPassage || passageIndex > normalized.endPassage) return null;
+  const start = passageIndex === normalized.startPassage ? normalized.startOffset : 0;
+  const end = passageIndex === normalized.endPassage ? normalized.endOffset : BOOK.passages[passageIndex].length;
+  return start < end ? { start, end } : null;
 }
 
 function currentExperience() { return EXPERIENCES[state.step]; }
@@ -130,7 +172,7 @@ function currentExperience() { return EXPERIENCES[state.step]; }
 function allAnnotations() {
   const experience = currentExperience();
   const existing = BASE_COMMENTS.map(comment => ({ ...comment, owner: false, range: rangeForComment(comment, experience.id) }));
-  const authored = (state.userComments[experience.id] || []).map(comment => ({ ...comment, owner: true, range: comment.range }));
+  const authored = (state.userComments[experience.id] || []).map(comment => ({ ...comment, owner: true, range: normalizeRange(comment.range) }));
   return [...existing, ...authored];
 }
 
@@ -243,11 +285,12 @@ function renderPassages() {
 }
 
 function renderSentence(text, passageIndex, sentenceIndex, sentence, annotations) {
-  const relevant = annotations.filter(item => item.range.passage === passageIndex && item.range.start < sentence.end && item.range.end > sentence.start);
+  const relevant = annotations.map(item => ({ item, slice: rangeSliceForPassage(item.range, passageIndex) }))
+    .filter(({ slice }) => slice && slice.start < sentence.end && slice.end > sentence.start);
   const boundaries = new Set([sentence.start, sentence.end]);
-  relevant.forEach(item => {
-    boundaries.add(Math.max(sentence.start, item.range.start));
-    boundaries.add(Math.min(sentence.end, item.range.end));
+  relevant.forEach(({ slice }) => {
+    boundaries.add(Math.max(sentence.start, slice.start));
+    boundaries.add(Math.min(sentence.end, slice.end));
   });
   const points = [...boundaries].sort((a, b) => a - b);
   let inner = "";
@@ -255,7 +298,7 @@ function renderSentence(text, passageIndex, sentenceIndex, sentence, annotations
     const start = points[i];
     const end = points[i + 1];
     if (start === end) continue;
-    const ids = relevant.filter(item => item.range.start <= start && item.range.end >= end).map(item => item.id);
+    const ids = relevant.filter(({ slice }) => slice.start <= start && slice.end >= end).map(({ item }) => item.id);
     const content = escapeHtml(text.slice(start, end));
     const dragTarget = currentExperience().mode === "drag" ? ` tabindex="0" role="button" aria-label="${ids.length}개의 댓글이 있는 글"` : "";
     inner += ids.length ? `<span class="annotation${ids.length > 1 ? " overlap" : ""}" data-comment-ids="${ids.join(",")}" data-offset="${start}"${dragTarget}>${content}</span>` : content;
@@ -334,7 +377,8 @@ function handleReaderActivation(event, forcedOrigin = null) {
     return;
   }
   if (experience.id === "paragraph") {
-    const target = { passage: Number(passage.dataset.passage), start: 0, end: BOOK.passages[passage.dataset.passage].length };
+    const passageIndex = Number(passage.dataset.passage);
+    const target = makeRange(passageIndex, 0, passageIndex, BOOK.passages[passageIndex].length);
     openCommentSheet(target);
     return;
   }
@@ -379,28 +423,42 @@ function openTapIntentChoice(ids, sentence) {
 
 function selectTappedSentence(sentence) {
   const target = rangeFromSentence(sentence);
-  if (tapRange && !tapRange.complete && tapRange.passage !== target.passage) {
-    showSelectionNotice("댓글 범위는 같은 문단 안에서만 선택할 수 있어요.");
-    return;
-  }
   if (!tapRange || tapRange.complete) {
-    tapRange = { ...target, anchorSentence: Number(sentence.dataset.sentence), complete: false };
+    tapRange = { anchor: target, complete: false };
     document.querySelectorAll(".selected-range").forEach(node => node.classList.remove("selected-range"));
     sentence.classList.add("selected-range");
     announce("시작 문장을 선택했습니다. 마지막 문장을 선택하세요.");
     return;
   }
-  const endSentence = Number(sentence.dataset.sentence);
-  const first = Math.min(tapRange.anchorSentence, endSentence);
-  const last = Math.max(tapRange.anchorSentence, endSentence);
-  const sentences = SENTENCES[target.passage];
-  tapRange = { passage: target.passage, start: sentences[first].start, end: sentences[last].end, complete: true };
+  const anchor = tapRange.anchor;
+  const anchorComesFirst = comparePoints(anchor.startPassage, anchor.startOffset, target.startPassage, target.startOffset) <= 0;
+  const first = anchorComesFirst ? anchor : target;
+  const last = anchorComesFirst ? target : anchor;
+  tapRange = { ...makeRange(first.startPassage, first.startOffset, last.endPassage, last.endOffset), complete: true };
   document.querySelectorAll(".selected-range").forEach(node => node.classList.remove("selected-range"));
-  for (let index = first; index <= last; index += 1) {
-    document.querySelector(`.sentence[data-passage="${target.passage}"][data-sentence="${index}"]`).classList.add("selected-range");
-  }
+  markSentencesInRange(tapRange);
   showContextAction(sentence.getBoundingClientRect(), tapRange);
   announce("문장 범위를 선택했습니다. 댓글 달기 버튼을 누르세요.");
+}
+
+function sentenceRangesIn(range) {
+  const normalized = normalizeRange(range);
+  if (!normalized) return [];
+  const matches = [];
+  for (let passageIndex = normalized.startPassage; passageIndex <= normalized.endPassage; passageIndex += 1) {
+    SENTENCES[passageIndex].forEach((sentence, sentenceIndex) => {
+      const startsBeforeEnd = comparePoints(passageIndex, sentence.start, normalized.endPassage, normalized.endOffset) < 0;
+      const endsAfterStart = comparePoints(passageIndex, sentence.end, normalized.startPassage, normalized.startOffset) > 0;
+      if (startsBeforeEnd && endsAfterStart) matches.push({ passageIndex, sentenceIndex, sentence });
+    });
+  }
+  return matches;
+}
+
+function markSentencesInRange(range) {
+  sentenceRangesIn(range).forEach(({ passageIndex, sentenceIndex }) => {
+    document.querySelector(`.sentence[data-passage="${passageIndex}"][data-sentence="${sentenceIndex}"]`)?.classList.add("selected-range");
+  });
 }
 
 function scheduleSelectionRead() {
@@ -424,33 +482,46 @@ function readNativeSelection() {
     selectionTarget = null;
     return;
   }
-  if (startPassage !== endPassage) {
-    hideContextAction();
-    selectionTarget = null;
-    showSelectionNotice("댓글 범위는 같은 문단 안에서만 선택할 수 있어요.");
-    return;
-  }
-  const passageIndex = Number(startPassage.dataset.passage);
+  const startPassageIndex = Number(startPassage.dataset.passage);
+  const endPassageIndex = Number(endPassage.dataset.passage);
   const start = offsetWithin(startPassage, range.startContainer, range.startOffset);
-  const end = offsetWithin(startPassage, range.endContainer, range.endOffset);
-  if (start === end) return;
-  selectionTarget = { passage: passageIndex, start: Math.min(start, end), end: Math.max(start, end) };
+  const end = offsetWithin(endPassage, range.endContainer, range.endOffset);
+  const backward = selectionIsBackward(selection);
+  selectionTarget = makeRange(startPassageIndex, start, endPassageIndex, end);
+  if (startPassageIndex === endPassageIndex && start === end) return;
   if (currentExperience().id === "sentence-drag") {
-    const touched = SENTENCES[passageIndex].filter(sentence => sentence.start < selectionTarget.end && sentence.end > selectionTarget.start);
+    const touched = sentenceRangesIn(selectionTarget);
     if (touched.length) {
-      selectionTarget.start = touched[0].start;
-      selectionTarget.end = touched[touched.length - 1].end;
-      setDomSelection(startPassage, selectionTarget.start, selectionTarget.end);
+      const first = touched[0];
+      const last = touched[touched.length - 1];
+      selectionTarget = makeRange(first.passageIndex, first.sentence.start, last.passageIndex, last.sentence.end);
+      setDomSelection(selectionTarget, backward);
     }
   }
   const activeRange = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : range;
-  const rect = activeRange.getBoundingClientRect();
+  const rect = selectionFocusRect(activeRange, backward);
   showContextAction(rect, selectionTarget);
 }
 
-function setDomSelection(passage, start, end) {
-  const startPoint = textPointAt(passage, start);
-  const endPoint = textPointAt(passage, end);
+function selectionIsBackward(selection) {
+  if (!selection.anchorNode || !selection.focusNode) return false;
+  if (selection.anchorNode === selection.focusNode) return selection.anchorOffset > selection.focusOffset;
+  return Boolean(selection.anchorNode.compareDocumentPosition(selection.focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
+}
+
+function selectionFocusRect(range, backward) {
+  const rects = [...range.getClientRects()].filter(rect => rect.width || rect.height);
+  if (rects.length) return backward ? rects[0] : rects[rects.length - 1];
+  return range.getBoundingClientRect();
+}
+
+function setDomSelection(target, backward = false) {
+  const rangeTarget = normalizeRange(target);
+  const startPassage = document.querySelector(`.passage[data-passage="${rangeTarget.startPassage}"]`);
+  const endPassage = document.querySelector(`.passage[data-passage="${rangeTarget.endPassage}"]`);
+  if (!startPassage || !endPassage) return;
+  const startPoint = textPointAt(startPassage, rangeTarget.startOffset);
+  const endPoint = textPointAt(endPassage, rangeTarget.endOffset);
   if (!startPoint || !endPoint) return;
   const range = document.createRange();
   range.setStart(startPoint.node, startPoint.offset);
@@ -458,7 +529,11 @@ function setDomSelection(passage, start, end) {
   const selection = window.getSelection();
   normalizingSelection = true;
   selection.removeAllRanges();
-  selection.addRange(range);
+  if (backward && typeof selection.setBaseAndExtent === "function") {
+    selection.setBaseAndExtent(endPoint.node, endPoint.offset, startPoint.node, startPoint.offset);
+  } else {
+    selection.addRange(range);
+  }
   requestAnimationFrame(() => { normalizingSelection = false; });
 }
 
@@ -501,7 +576,7 @@ function showContextAction(rect, target) {
   button.id = "context-action";
   button.textContent = "댓글 달기";
   button.style.left = `${Math.max(72, Math.min(window.innerWidth - 72, rect.left + rect.width / 2))}px`;
-  button.style.top = `${Math.max(58, rect.top - 7)}px`;
+  button.style.top = `${Math.max(58, Math.min(window.innerHeight - 8, rect.top - 7))}px`;
   button.addEventListener("click", () => {
     window.getSelection()?.removeAllRanges();
     hideContextAction();
@@ -520,7 +595,8 @@ function clearSelectionState() {
 }
 
 function rangeFromSentence(sentence) {
-  return { passage: Number(sentence.dataset.passage), start: Number(sentence.dataset.start), end: Number(sentence.dataset.end) };
+  const passageIndex = Number(sentence.dataset.passage);
+  return makeRange(passageIndex, Number(sentence.dataset.start), passageIndex, Number(sentence.dataset.end));
 }
 
 function rangeForAnnotation(id) {
@@ -529,7 +605,7 @@ function rangeForAnnotation(id) {
 
 function shouldChooseRange(ids) {
   if (!["sentence-tap", "sentence-drag", "words"].includes(currentExperience().id)) return false;
-  const uniqueRanges = new Set(ids.map(id => rangeForAnnotation(id)).filter(Boolean).map(range => `${range.passage}:${range.start}:${range.end}`));
+  const uniqueRanges = new Set(ids.map(id => rangeForAnnotation(id)).filter(Boolean).map(rangeKey));
   return uniqueRanges.size > 1;
 }
 
@@ -554,9 +630,9 @@ function openRangeChooser(ids, fallbackTarget) {
 function commentsForTarget(target, preferredIds) {
   const all = allAnnotations();
   if (preferredIds?.length) {
-    return all.filter(item => preferredIds.includes(item.id) || (item.owner && item.range.passage === target.passage && item.range.start === target.start && item.range.end === target.end));
+    return all.filter(item => preferredIds.includes(item.id) || (item.owner && sameRange(item.range, target)));
   }
-  return all.filter(item => item.range.passage === target.passage && item.range.start === target.start && item.range.end === target.end);
+  return all.filter(item => sameRange(item.range, target));
 }
 
 function openCommentSheet(target, preferredIds = []) {
@@ -605,7 +681,7 @@ function bindCommentSheet(target, preferredIds) {
     const text = input.value.trim();
     if (!text) { error.textContent = "댓글 내용을 입력해 주세요."; return; }
     const experienceId = currentExperience().id;
-    state.userComments[experienceId].push({ id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`, author: "나", text, range: target });
+    state.userComments[experienceId].push({ id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`, author: "나", text, range: normalizeRange(target) });
     saveState();
     closeDialog();
     renderPassages();
@@ -666,7 +742,14 @@ function confirmDelete(id, target, preferredIds) {
 }
 
 function textForRange(range) {
-  const text = BOOK.passages[range.passage].slice(range.start, range.end).trim();
+  const normalized = normalizeRange(range);
+  if (!normalized) return "";
+  const parts = [];
+  for (let passageIndex = normalized.startPassage; passageIndex <= normalized.endPassage; passageIndex += 1) {
+    const slice = rangeSliceForPassage(normalized, passageIndex);
+    if (slice) parts.push(BOOK.passages[passageIndex].slice(slice.start, slice.end));
+  }
+  const text = parts.join("\n\n").trim();
   return text.length > 180 ? `${text.slice(0, 177)}…` : text;
 }
 
