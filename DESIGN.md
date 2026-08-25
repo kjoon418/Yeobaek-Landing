@@ -65,7 +65,7 @@
 
 - Reading stays primary: guidance and experiment controls remain compact and outside the prose rhythm.
 - Change one interaction variable at a time: text, existing comment meaning, visual language, and sheet structure remain constant.
-- Make overlap legible: annotated text uses a soft background; intersecting ranges increase intensity and open a range chooser before comments.
+- Make overlap legible: annotated text uses only an underline; intersecting ranges use a darker double underline and open a range chooser before comments.
 - Preserve direct manipulation: sentence tap and browser-native text selection remain the main gestures; secondary actions appear beside the chosen range.
 - Tradeoffs: research clarity and implementation size take priority over future extensibility or a general-purpose annotation model.
 
@@ -77,7 +77,7 @@
   - Accent `#B59A7D`
   - Surface `#FFFFFF`
   - Soft surface `#F5F0E8`
-  - Base highlight `#EADFCE`; overlapping ranges use a higher-opacity/darker treatment from the same family
+  - Base annotation underline uses the accent family; overlapping ranges use a darker double underline without any background fill
   - Secondary text `#6B645E`, muted text `#8C857D`
   - Line `#EEE7DE`, outline `#D8CEC3`, error `#C0492F`
 - Typography:
@@ -106,7 +106,7 @@
   - One-time tutorial overlay per experience.
   - Sentence-tap range selector.
   - Native-selection observer and contextual `댓글 달기` action.
-  - Comment range annotation compositor with overlap intensity.
+  - Comment range annotation compositor with solid and double underline variants.
   - Short range-choice bottom sheet.
   - For `여러 문장—탭`, tapping annotated text first shows `댓글 보기 / 범위 선택 시작`; this disambiguates viewing from selecting.
   - Sentence and word ranges stay within one source paragraph in this one-off prototype. Crossing a paragraph boundary keeps the current selection and shows a short visible and screen-reader announcement instead of failing silently.
@@ -122,7 +122,7 @@
 
 - Target standard: practical WCAG 2.2 AA for text, controls, focus, and dialogs.
 - Keyboard/focus behavior: dialog focus is contained, Escape dismisses non-destructive overlays, and focus returns to the invoking control where applicable.
-- Contrast/readability: annotations must preserve readable text contrast at both base and overlap intensity.
+- Contrast/readability: annotation underlines must remain visible without obscuring glyphs; overlap also changes line style so it does not rely on color alone.
 - Screen-reader semantics: experience state, buttons, dialog titles, comment ownership, and editable actions use explicit labels.
 - Reduced motion and sensory considerations: honor `prefers-reduced-motion`; do not rely on color alone for the active selection or ownership.
 

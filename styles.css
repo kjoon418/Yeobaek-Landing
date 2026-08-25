@@ -25,8 +25,8 @@
   --accent-dark: #92775c;
   --surface: #fff;
   --soft-surface: #f5f0e8;
-  --highlight: rgba(218, 198, 173, .48);
-  --highlight-overlap: rgba(187, 151, 112, .55);
+  --annotation-underline: rgba(146, 119, 92, .72);
+  --annotation-overlap-underline: #74583f;
   --selection: rgba(154, 120, 84, .3);
   --secondary: #6b645e;
   --muted: #8c857d;
@@ -155,8 +155,23 @@ button:disabled { opacity: .38; cursor: default; }
 .passage[role="button"], .sentence[role="button"], .annotation[role="button"] { cursor: pointer; }
 .sentence { border-radius: 4px; }
 .sentence.selected-range { background: var(--selection); box-shadow: inset 0 -2px var(--accent-dark); }
-.annotation { border-radius: 3px; background: var(--highlight); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-.annotation.overlap { background: var(--highlight-overlap); box-shadow: inset 0 -1px rgba(146, 119, 92, .55); }
+.annotation {
+  background: transparent;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-color: var(--annotation-underline);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.annotation.overlap {
+  background: transparent;
+  text-decoration-style: double;
+  text-decoration-color: var(--annotation-overlap-underline);
+  text-decoration-thickness: 2px;
+}
 .annotation:focus-visible { outline: 2px solid var(--accent-dark); }
 .passage:focus-visible, .sentence:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 3px; }
 
