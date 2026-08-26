@@ -228,6 +228,19 @@ button:disabled { opacity: .38; cursor: default; }
   font-weight: 600;
 }
 
+.range-feedback {
+  position: fixed;
+  z-index: 26;
+  inset: 0;
+  pointer-events: none;
+}
+
+.range-feedback-highlight {
+  position: fixed;
+  border-radius: 3px;
+  background: rgba(181, 154, 125, .2);
+}
+
 .scrim {
   position: fixed;
   z-index: 40;

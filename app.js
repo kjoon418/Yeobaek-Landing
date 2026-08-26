@@ -51,9 +51,12 @@ let normalizingSelection = false;
 let suppressAnnotationClickUntil = 0;
 let noticeTimer = 0;
 let suppressedLongPressClick = null;
+let rangeFeedbackTimer = 0;
+let rangeFeedbackSequence = 0;
 
 const LONG_PRESS_DELAY = 550;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
+const RANGE_FEEDBACK_DURATION = 180;
 
 function defaultState() {
   return {
@@ -452,20 +455,20 @@ function handleReaderActivation(event, forcedOrigin = null, activationIntent = "
     const selection = window.getSelection();
     if (!annotation || Date.now() < suppressAnnotationClickUntil || (selection && !selection.isCollapsed)) return;
     const target = rangeForAnnotation(ids[0]);
-    if (shouldChooseRange(ids)) openRangeChooser(ids, target);
-    else openCommentSheet(target, ids);
+    const action = () => shouldChooseRange(ids) ? openRangeChooser(ids, target) : openCommentSheet(target, ids);
+    showRangeFeedback(ids.map(rangeForAnnotation), action);
     return;
   }
   if (experience.id === "paragraph") {
     const passageIndex = Number(passage.dataset.passage);
     const target = makeRange(passageIndex, 0, passageIndex, BOOK.passages[passageIndex].length);
-    openCommentSheet(target);
+    showRangeFeedback([target], () => openCommentSheet(target));
     return;
   }
   if (!sentence) return;
   if (experience.id === "sentence") {
     const target = rangeFromSentence(sentence);
-    openCommentSheet(target);
+    showRangeFeedback([target], () => openCommentSheet(target));
     return;
   }
   if (experience.id === "sentence-tap") {
@@ -473,10 +476,11 @@ function handleReaderActivation(event, forcedOrigin = null, activationIntent = "
       selectTappedSentence(sentence);
     } else if (ids.length) {
       const target = rangeForAnnotation(ids[0]);
-      if (shouldChooseRange(ids)) openRangeChooser(ids, rangeFromSentence(sentence));
-      else openCommentSheet(target, ids);
+      const action = () => shouldChooseRange(ids) ? openRangeChooser(ids, rangeFromSentence(sentence)) : openCommentSheet(target, ids);
+      showRangeFeedback(ids.map(rangeForAnnotation), action);
     } else {
-      openCommentSheet(rangeFromSentence(sentence));
+      const target = rangeFromSentence(sentence);
+      showRangeFeedback([target], () => openCommentSheet(target));
     }
   }
 }
@@ -641,6 +645,86 @@ function textPointAt(root, wantedOffset) {
   return null;
 }
 
+function rectsForModelRanges(ranges) {
+  const rects = [];
+  const uniqueRanges = [...new Map(ranges.map(normalizeRange).filter(Boolean).map(range => [rangeKey(range), range])).values()];
+  uniqueRanges.forEach(range => {
+    for (let passageIndex = range.startPassage; passageIndex <= range.endPassage; passageIndex += 1) {
+      const slice = rangeSliceForPassage(range, passageIndex);
+      const passage = document.querySelector(`.passage[data-passage="${passageIndex}"]`);
+      if (!slice || !passage) continue;
+      const startPoint = textPointAt(passage, slice.start);
+      const endPoint = textPointAt(passage, slice.end);
+      if (!startPoint || !endPoint) continue;
+      const domRange = document.createRange();
+      domRange.setStart(startPoint.node, startPoint.offset);
+      domRange.setEnd(endPoint.node, endPoint.offset);
+      [...domRange.getClientRects()].forEach(rect => {
+        if (rect.width > 0 && rect.height > 0) rects.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+      });
+    }
+  });
+  return mergeFeedbackRects(rects);
+}
+
+function mergeFeedbackRects(rects) {
+  const merged = [];
+  rects.sort((first, second) => first.top - second.top || first.left - second.left).forEach(rect => {
+    const match = merged.find(candidate => {
+      const verticalOverlap = Math.min(candidate.bottom, rect.bottom) - Math.max(candidate.top, rect.top);
+      const minHeight = Math.min(candidate.bottom - candidate.top, rect.bottom - rect.top);
+      const horizontalGap = Math.max(0, Math.max(candidate.left, rect.left) - Math.min(candidate.right, rect.right));
+      return verticalOverlap >= minHeight * .6 && horizontalGap <= 2;
+    });
+    if (!match) {
+      merged.push({ ...rect });
+      return;
+    }
+    match.left = Math.min(match.left, rect.left);
+    match.top = Math.min(match.top, rect.top);
+    match.right = Math.max(match.right, rect.right);
+    match.bottom = Math.max(match.bottom, rect.bottom);
+  });
+  return merged;
+}
+
+function cancelRangeFeedback() {
+  rangeFeedbackSequence += 1;
+  clearTimeout(rangeFeedbackTimer);
+  rangeFeedbackTimer = 0;
+  document.getElementById("range-feedback")?.remove();
+}
+
+function showRangeFeedback(ranges, action) {
+  cancelRangeFeedback();
+  const sequence = rangeFeedbackSequence;
+  const rects = rectsForModelRanges(ranges);
+  if (!rects.length) {
+    action();
+    return;
+  }
+  const overlay = document.createElement("div");
+  overlay.id = "range-feedback";
+  overlay.className = "range-feedback";
+  overlay.setAttribute("aria-hidden", "true");
+  rects.forEach(rect => {
+    const highlight = document.createElement("span");
+    highlight.className = "range-feedback-highlight";
+    highlight.style.left = `${rect.left}px`;
+    highlight.style.top = `${rect.top}px`;
+    highlight.style.width = `${rect.right - rect.left}px`;
+    highlight.style.height = `${rect.bottom - rect.top}px`;
+    overlay.appendChild(highlight);
+  });
+  document.body.appendChild(overlay);
+  rangeFeedbackTimer = window.setTimeout(() => {
+    if (sequence !== rangeFeedbackSequence) return;
+    overlay.remove();
+    rangeFeedbackTimer = 0;
+    action();
+  }, RANGE_FEEDBACK_DURATION);
+}
+
 function showSelectionNotice(message) {
   const notice = document.getElementById("selection-notice");
   if (!notice) return;
@@ -664,23 +748,39 @@ function offsetWithin(root, node, offset) {
 
 function showContextAction(rect, target) {
   hideContextAction();
+  const capturedTarget = normalizeRange(target);
+  let activated = false;
   const button = document.createElement("button");
   button.className = "context-action";
   button.id = "context-action";
   button.textContent = "댓글 달기";
   button.style.left = `${Math.max(72, Math.min(window.innerWidth - 72, rect.left + rect.width / 2))}px`;
   button.style.top = `${Math.max(58, Math.min(window.innerHeight - 8, rect.top - 7))}px`;
-  button.addEventListener("click", () => {
-    window.getSelection()?.removeAllRanges();
+  const activate = event => {
+    if (activated) return;
+    const immediatePointer = event.type === "pointerdown" && event.isPrimary && ["touch", "pen"].includes(event.pointerType);
+    const immediateTouch = event.type === "touchstart" && event.touches.length === 1;
+    const fallbackClick = event.type === "click";
+    if (!immediatePointer && !immediateTouch && !fallbackClick) return;
+    if (immediatePointer || immediateTouch) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    activated = true;
+    clearDomSelection();
     hideContextAction();
-    openCommentSheet(target, []);
-  });
+    openCommentSheet(capturedTarget, []);
+  };
+  button.addEventListener("pointerdown", activate);
+  button.addEventListener("touchstart", activate, { passive: false });
+  button.addEventListener("click", activate);
   document.body.appendChild(button);
 }
 
 function hideContextAction() { document.getElementById("context-action")?.remove(); }
 
 function clearSelectionState() {
+  cancelRangeFeedback();
   hideContextAction();
   window.getSelection()?.removeAllRanges();
   selectionTarget = null;
@@ -715,7 +815,8 @@ function openRangeChooser(ids, fallbackTarget) {
       const id = button.dataset.rangeId;
       const item = items.find(candidate => candidate.id === id);
       closeDialog();
-      openCommentSheet(item?.range || fallbackTarget, [id]);
+      const target = item?.range || fallbackTarget;
+      showRangeFeedback([target], () => openCommentSheet(target, [id]));
     }));
   });
 }

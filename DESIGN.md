@@ -92,6 +92,7 @@
   - Comment sheets use a white surface with 20px rounded top corners, a subtle scrim, and a 36x4px drag handle.
   - Buttons and fields use soft pill or large rounded shapes.
 - Motion: short opacity/translation transitions only; no decorative motion.
+- Direct tap activations briefly show the exact model-backed comment range with a static accent wash for 180 ms before opening a comment sheet or overlap chooser. Candidate ranges are rendered as a geometric union so annotation spans and overlapping candidates do not stack opacity; native selections and persistent annotation underlines are not modified.
 - Imagery/iconography: use the existing minimal line-icon language; no book cover or decorative illustration is required.
 
 ## Components
@@ -106,6 +107,7 @@
   - One-time tutorial overlay per experience.
   - Sentence-tap range selector.
   - Native-selection observer and contextual `댓글 달기` action.
+  - The contextual action captures its model range when rendered and consumes a primary touch/pen press before Safari selection changes can replace the button; mouse and keyboard activation keep click semantics, and a non-passive touch fallback supports older WebKit without opening duplicate sheets.
   - Comment range annotation compositor with solid and double underline variants.
   - Short range-choice bottom sheet.
   - Bottom sheet handles and headers remain fixed while only the sheet body scrolls.
