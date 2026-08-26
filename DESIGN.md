@@ -107,6 +107,7 @@
   - One-time tutorial overlay per experience.
   - Sentence-tap range selector.
   - Native-selection observer and contextual `댓글 달기` action.
+  - On Android touch/coarse browsers, drag experiences use a scoped long-press fallback because the browser may scroll instead of extending native text selection. A single touch held for roughly 525 ms anchors a DOM selection; movement after that threshold is prevented from scrolling and extends the selection from touch coordinates before the existing sentence/word normalization runs. Movement beyond the tolerance before the threshold cancels the pending gesture without preventing the browser's native vertical scroll, and the contextual action is withheld until touch end. Multi-touch and cancelled gestures cleanly abort. Context menus are suppressed only while this Android gesture is pending or active; ordinary annotation taps remain available.
   - The contextual action captures its model range when rendered and consumes a primary touch/pen press before Safari selection changes can replace the button; mouse and keyboard activation keep click semantics, and a non-passive touch fallback supports older WebKit without opening duplicate sheets.
   - Comment range annotation compositor with one solid underline thickness and normal/darker color variants.
   - Short range-choice bottom sheet.
@@ -118,9 +119,9 @@
 - Variants and states:
   - `한 문단`: tapping a paragraph opens its comments/input.
   - `여러 문장 단위로 선택`: tap once to view comments (including the existing overlap range chooser), or long-press any sentence to set the range start. Tap the end sentence in either direction, including across paragraphs, then use contextual `댓글 달기`. Keyboard Enter/Space remains comment viewing rather than range selection.
-  - `여러 문장 드래그로 선택`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
+  - `여러 문장 드래그로 선택`: long-press/drag across one or more paragraphs, normalize the visible selection to whole-sentence bounds, then use contextual `댓글 달기`. iOS and non-Android browsers retain native selection handles; Android touch uses the scoped coordinate-based fallback while preserving pre-threshold scrolling.
   - `한 문장`: pointer-down immediately previews only the touched sentence with a subtle static accent wash; releasing, cancelling, or scrolling clears the preview, and a completed tap opens the sentence's comments/input.
-  - `여러 단어`: long-press/drag snaps partial selections to whole whitespace-delimited words in either direction and across paragraphs, then use contextual `댓글 달기`; whitespace-only selections are cleared.
+  - `여러 단어`: long-press/drag snaps partial selections to whole whitespace-delimited words in either direction and across paragraphs, then use contextual `댓글 달기`; whitespace-only selections are cleared. Android's fallback feeds the same normalization, so partial glyph coordinates never become partial-word comment ranges.
 - Token/component ownership: mobile app theme files remain canonical for brand tokens; web-only interaction tokens live with the prototype CSS.
 
 ## Accessibility
@@ -136,7 +137,7 @@
 
 - Supported breakpoints/devices: smartphone portrait layouts from approximately 320px to 430px; iPhone Safari and Android Chrome are the compatibility targets.
 - Layout adaptations: on wider viewports, keep a centered phone-width reader canvas rather than creating a desktop IA.
-- Touch/hover differences: touch is primary; hover is non-essential. Native browser selection handles remain browser-controlled. Native callout is disabled only on `여러 문장 단위로 선택` sentences, whose pointer gesture keeps vertical pan available.
+- Touch/hover differences: touch is primary; hover is non-essential. Native browser selection handles remain browser-controlled on iOS and non-Android browsers; Android drag experiences use the scoped coordinate fallback after the long-press threshold. Native callout is disabled only on `여러 문장 단위로 선택` sentences, whose pointer gesture keeps vertical pan available.
 
 ## Interaction states
 

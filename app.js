@@ -21,9 +21,9 @@ const BOOK = {
 const EXPERIENCES = [
   { id: "paragraph", name: "한 문단", mode: "tap", tutorial: "댓글을 보고 싶은 문단을 탭하세요. 같은 문단에 새 댓글도 남길 수 있어요." },
   { id: "sentence-tap", name: "여러 문장 단위로 선택", mode: "tap", tutorial: "한 번 탭하면 댓글을 볼 수 있어요. 새 댓글은 시작 문장을 길게 누르고, 마지막 문장을 탭한 뒤 ‘댓글 달기’를 누르세요." },
-  { id: "sentence-drag", name: "여러 문장 드래그로 선택", mode: "drag", tutorial: "본문을 길게 누른 뒤 선택 핸들을 움직이세요. 선택된 여러 문장에 댓글을 달 수 있어요." },
+  { id: "sentence-drag", name: "여러 문장 드래그로 선택", mode: "drag", tutorial: "본문을 길게 누른 뒤 선택 핸들을 움직이세요. 선택된 여러 문장에 댓글을 달 수 있어요.", androidTutorial: "본문을 길게 누른 뒤, 손가락을 떼지 않고 원하는 문장까지 움직이세요. 선택된 여러 문장에 댓글을 달 수 있어요." },
   { id: "sentence", name: "한 문장", mode: "tap", tutorial: "댓글을 보고 남기고 싶은 문장을 한 번 탭하세요." },
-  { id: "words", name: "여러 단어", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 공백으로 구분된 단어 단위로 범위를 고를 수 있어요." }
+  { id: "words", name: "여러 단어", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 공백으로 구분된 단어 단위로 범위를 고를 수 있어요.", androidTutorial: "본문을 길게 누른 뒤, 손가락을 떼지 않고 원하는 단어까지 움직이세요. 공백으로 구분된 단어 단위로 범위를 고를 수 있어요." }
 ];
 
 const BASE_COMMENTS = [
@@ -53,10 +53,13 @@ let noticeTimer = 0;
 let suppressedLongPressClick = null;
 let rangeFeedbackTimer = 0;
 let rangeFeedbackSequence = 0;
+let deferContextActionUntilTouchEnd = false;
 
 const LONG_PRESS_DELAY = 550;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 const RANGE_FEEDBACK_DURATION = 180;
+const ANDROID_DRAG_LONG_PRESS_DELAY = 525;
+const ANDROID_DRAG_MOVE_TOLERANCE = 10;
 
 function defaultState() {
   return {
@@ -92,6 +95,11 @@ function escapeHtml(value) {
 function announce(message) {
   liveRegion.textContent = "";
   requestAnimationFrame(() => { liveRegion.textContent = message; });
+}
+
+function usesAndroidDragFallback() {
+  return /Android/i.test(navigator.userAgent)
+    && (navigator.maxTouchPoints > 0 || window.matchMedia?.("(pointer: coarse)")?.matches);
 }
 
 function splitSentences(text) {
@@ -277,7 +285,7 @@ function maybeShowTutorial() {
   openCenteredDialog(`<div class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
     <span class="count">${state.step + 1} / 5</span>
     <h2 id="tutorial-title">${escapeHtml(experience.name)}</h2>
-    <p>${escapeHtml(experience.tutorial)}</p>
+    <p>${escapeHtml(usesAndroidDragFallback() && experience.androidTutorial ? experience.androidTutorial : experience.tutorial)}</p>
     <button class="primary-button" data-dialog-close>알겠어요</button>
   </div>`, "[data-dialog-close]");
 }
@@ -437,6 +445,7 @@ function bindReaderEvents() {
     return;
   }
   if (experience.mode === "drag") {
+    const androidDragCleanup = bindAndroidDragSelection(reader);
     const onSelectionEnd = () => scheduleSelectionRead();
     const onViewportChange = () => scheduleSelectionRead();
     const onSelectionChange = () => {
@@ -461,6 +470,7 @@ function bindReaderEvents() {
       window.visualViewport?.removeEventListener("scroll", onViewportChange);
       window.visualViewport?.removeEventListener("resize", onViewportChange);
       cancelAnimationFrame(selectionFrame);
+      androidDragCleanup();
     };
   } else {
     readerCleanup = () => {
@@ -468,6 +478,150 @@ function bindReaderEvents() {
       reader.removeEventListener("keydown", onKeydown);
     };
   }
+}
+
+function bindAndroidDragSelection(reader) {
+  if (!usesAndroidDragFallback()) return () => {};
+
+  let drag = null;
+
+  const clearDrag = () => {
+    if (drag) clearTimeout(drag.timer);
+    drag = null;
+    deferContextActionUntilTouchEnd = false;
+  };
+
+  const abortDrag = () => {
+    const wasActive = drag?.active;
+    clearDrag();
+    if (!wasActive) return;
+    selectionTarget = null;
+    hideContextAction();
+    clearDomSelection();
+  };
+
+  const pointFromTouch = touch => caretTextPointFromClient(touch.clientX, touch.clientY, reader);
+
+  const updateSelection = touch => {
+    if (!drag?.active) return;
+    const focus = pointFromTouch(touch);
+    if (!focus) return;
+    setDomSelectionFromPoints(drag.anchor, focus);
+    scheduleSelectionRead();
+  };
+
+  const onTouchStart = event => {
+    if (event.touches.length !== 1) {
+      abortDrag();
+      return;
+    }
+    const touch = event.touches[0];
+    const anchor = pointFromTouch(touch);
+    if (!anchor) return;
+    clearDrag();
+    drag = {
+      identifier: touch.identifier,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      anchor,
+      active: false,
+      timer: window.setTimeout(() => {
+        if (!drag) return;
+        drag.active = true;
+        deferContextActionUntilTouchEnd = true;
+        hideContextAction();
+      }, ANDROID_DRAG_LONG_PRESS_DELAY)
+    };
+  };
+
+  const onTouchMove = event => {
+    if (!drag) return;
+    if (event.touches.length !== 1 || event.touches[0].identifier !== drag.identifier) {
+      abortDrag();
+      return;
+    }
+    const touch = event.touches[0];
+    if (!drag.active) {
+      const distance = Math.hypot(touch.clientX - drag.startX, touch.clientY - drag.startY);
+      if (distance > ANDROID_DRAG_MOVE_TOLERANCE) clearDrag();
+      return;
+    }
+    event.preventDefault();
+    updateSelection(touch);
+  };
+
+  const onTouchEnd = event => {
+    if (!drag || [...event.changedTouches].every(touch => touch.identifier !== drag.identifier)) return;
+    const wasActive = drag.active;
+    clearTimeout(drag.timer);
+    drag = null;
+    deferContextActionUntilTouchEnd = false;
+    if (!wasActive) return;
+    event.preventDefault();
+    suppressAnnotationClickUntil = Date.now() + 450;
+    readNativeSelection();
+  };
+
+  const onTouchCancel = () => abortDrag();
+  const onContextMenu = event => {
+    if (drag) event.preventDefault();
+  };
+
+  reader.addEventListener("touchstart", onTouchStart, { passive: true });
+  reader.addEventListener("touchmove", onTouchMove, { passive: false });
+  reader.addEventListener("touchend", onTouchEnd, { passive: false });
+  reader.addEventListener("touchcancel", onTouchCancel, { passive: true });
+  reader.addEventListener("contextmenu", onContextMenu);
+
+  return () => {
+    abortDrag();
+    reader.removeEventListener("touchstart", onTouchStart);
+    reader.removeEventListener("touchmove", onTouchMove);
+    reader.removeEventListener("touchend", onTouchEnd);
+    reader.removeEventListener("touchcancel", onTouchCancel);
+    reader.removeEventListener("contextmenu", onContextMenu);
+  };
+}
+
+function caretTextPointFromClient(clientX, clientY, reader) {
+  let node;
+  let offset;
+  if (typeof document.caretPositionFromPoint === "function") {
+    const position = document.caretPositionFromPoint(clientX, clientY);
+    node = position?.offsetNode;
+    offset = position?.offset;
+  } else if (typeof document.caretRangeFromPoint === "function") {
+    const range = document.caretRangeFromPoint(clientX, clientY);
+    node = range?.startContainer;
+    offset = range?.startOffset;
+  }
+  if (!node || !Number.isInteger(offset) || !reader.contains(node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)) return null;
+  if (node.nodeType === Node.TEXT_NODE) return { node, offset };
+  const textNode = node.childNodes[offset]?.nodeType === Node.TEXT_NODE
+    ? node.childNodes[offset]
+    : [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE);
+  return textNode ? { node: textNode, offset: 0 } : null;
+}
+
+function setDomSelectionFromPoints(anchor, focus) {
+  const selection = window.getSelection();
+  if (!selection || !anchor?.node || !focus?.node) return;
+  normalizingSelection = true;
+  selection.removeAllRanges();
+  if (typeof selection.setBaseAndExtent === "function") {
+    selection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+  } else {
+    const anchorPrecedesFocus = anchor.node === focus.node
+      ? anchor.offset <= focus.offset
+      : Boolean(anchor.node.compareDocumentPosition(focus.node) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const range = document.createRange();
+    const start = anchorPrecedesFocus ? anchor : focus;
+    const end = anchorPrecedesFocus ? focus : anchor;
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    selection.addRange(range);
+  }
+  requestAnimationFrame(() => { normalizingSelection = false; });
 }
 
 function handleReaderActivation(event, forcedOrigin = null, activationIntent = "default") {
@@ -623,6 +777,10 @@ function readNativeSelection() {
   }
   const activeRange = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : range;
   const rect = selectionFocusRect(activeRange, backward);
+  if (deferContextActionUntilTouchEnd) {
+    hideContextAction();
+    return;
+  }
   showContextAction(rect, selectionTarget);
 }
 
