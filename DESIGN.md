@@ -56,7 +56,7 @@
 
 - Primary navigation: start screen -> five ordered reader experiences with adjacent previous/next navigation -> completion screen -> restart.
 - Core routes/screens:
-  - Start: short title, one-line explanation, `체험 시작`.
+  - Start: short title, two concise framing lines about trying exchange-reading comments and comparing favorite/uncomfortable methods, then `체험 시작`.
   - Reader: experience label, step indicator, reader, contextual selection action, comment sheets, previous/next.
   - Complete: short completion message, `처음부터 다시 체험`.
 - Content hierarchy: experience identity -> book title/author -> book text -> comment annotations -> contextual action -> comment sheet.
@@ -65,7 +65,7 @@
 
 - Reading stays primary: guidance and experiment controls remain compact and outside the prose rhythm.
 - Change one interaction variable at a time: text, existing comment meaning, visual language, and sheet structure remain constant.
-- Make overlap legible: annotated text uses only an underline; intersecting ranges use a darker double underline and open a range chooser before comments.
+- Make overlap legible: annotated text uses only one solid underline; intersecting ranges use the same underline thickness with a darker color and open a range chooser before comments.
 - Preserve direct manipulation: sentence tap and browser-native text selection remain the main gestures; secondary actions appear beside the chosen range.
 - Tradeoffs: research clarity and implementation size take priority over future extensibility or a general-purpose annotation model.
 
@@ -77,13 +77,13 @@
   - Accent `#B59A7D`
   - Surface `#FFFFFF`
   - Soft surface `#F5F0E8`
-  - Base annotation underline uses the accent family; overlapping ranges use a darker double underline without any background fill
+  - Base annotation underline uses the accent family; overlapping ranges use the same single solid underline with a darker color and no background fill
   - Secondary text `#6B645E`, muted text `#8C857D`
   - Line `#EEE7DE`, outline `#D8CEC3`, error `#C0492F`
 - Typography:
   - Ridi Batang for book text and reader title.
   - Wanted Sans for controls, labels, comments, and instructions.
-  - Reader text targets 17-18px with approximately 2x line height and restrained letter spacing.
+  - Reader text matches the app default exactly: Ridi Batang 400 at 18px with 36px line height and 1px letter spacing.
 - Spacing/layout rhythm:
   - Reader side gutters: 32px-equivalent.
   - Passage gap: 28px-equivalent.
@@ -108,17 +108,18 @@
   - Sentence-tap range selector.
   - Native-selection observer and contextual `댓글 달기` action.
   - The contextual action captures its model range when rendered and consumes a primary touch/pen press before Safari selection changes can replace the button; mouse and keyboard activation keep click semantics, and a non-passive touch fallback supports older WebKit without opening duplicate sheets.
-  - Comment range annotation compositor with solid and double underline variants.
+  - Comment range annotation compositor with one solid underline thickness and normal/darker color variants.
   - Short range-choice bottom sheet.
   - Bottom sheet handles and headers remain fixed while only the sheet body scrolls.
-  - For `여러 문장—탭`, one tap opens comments and a roughly 550 ms long-press starts sentence-range selection. Moving, scrolling, or cancelling the pointer aborts the long-press without blocking vertical scrolling.
+  - The reader navigation and bottom sheets synchronize to the browser's visible viewport: visual-viewport height limits sheet height, and the layout-to-visual bottom offset keeps fixed controls attached to the visible bottom edge while browser chrome changes.
+  - For `여러 문장 단위로 선택`, one tap opens comments and a roughly 550 ms long-press starts sentence-range selection. A visible notice then directs the participant to tap the final sentence and, after that tap, to press `댓글 달기`. Moving, scrolling, or cancelling before the threshold aborts the pending long-press without showing the notice or blocking vertical scrolling; once the start sentence is confirmed, that range state persists for the required final-sentence tap.
   - Comment ranges use ordered start/end endpoints (`startPassage`, `startOffset`, `endPassage`, `endOffset`) so sentence-tap, sentence-drag, and word selection can cross paragraph boundaries. Existing session data using one-paragraph ranges is normalized when read.
   - Word selection snaps to maximal non-whitespace tokens (`/\S+/gu`): punctuation remains part of its adjacent token, outer whitespace is excluded, and whitespace between selected tokens remains in the range.
 - Variants and states:
   - `한 문단`: tapping a paragraph opens its comments/input.
-  - `여러 문장—탭`: tap once to view comments (including the existing overlap range chooser), or long-press any sentence to set the range start. Tap the end sentence in either direction, including across paragraphs, then use contextual `댓글 달기`. Keyboard Enter/Space remains comment viewing rather than range selection.
-  - `여러 문장—드래그`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
-  - `한 문장`: one tap opens the sentence's comments/input.
+  - `여러 문장 단위로 선택`: tap once to view comments (including the existing overlap range chooser), or long-press any sentence to set the range start. Tap the end sentence in either direction, including across paragraphs, then use contextual `댓글 달기`. Keyboard Enter/Space remains comment viewing rather than range selection.
+  - `여러 문장 드래그로 선택`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
+  - `한 문장`: pointer-down immediately previews only the touched sentence with a subtle static accent wash; releasing, cancelling, or scrolling clears the preview, and a completed tap opens the sentence's comments/input.
   - `여러 단어`: long-press/drag snaps partial selections to whole whitespace-delimited words in either direction and across paragraphs, then use contextual `댓글 달기`; whitespace-only selections are cleared.
 - Token/component ownership: mobile app theme files remain canonical for brand tokens; web-only interaction tokens live with the prototype CSS.
 
@@ -127,7 +128,7 @@
 - Target standard: practical WCAG 2.2 AA for text, controls, focus, and dialogs.
 - Prototype exception: this one-off interview prototype uses restrictive viewport settings plus Safari gesture and multi-touch move prevention as a best-effort zoom guard, prioritizing controlled gesture testing over WCAG zoom accessibility; iOS/browser and OS-level accessibility zoom paths may still bypass it.
 - Keyboard/focus behavior: dialog focus is contained, Escape dismisses non-destructive overlays, and focus returns to the invoking control where applicable.
-- Contrast/readability: annotation underlines must remain visible without obscuring glyphs; overlap also changes line style so it does not rely on color alone.
+- Contrast/readability: annotation underlines must remain visible without obscuring glyphs; overlapping ranges additionally expose their comment count and range chooser semantics so color is not the only identifying cue.
 - Screen-reader semantics: experience state, buttons, dialog titles, comment ownership, and editable actions use explicit labels.
 - Reduced motion and sensory considerations: honor `prefers-reduced-motion`; do not rely on color alone for the active selection or ownership.
 
@@ -135,7 +136,7 @@
 
 - Supported breakpoints/devices: smartphone portrait layouts from approximately 320px to 430px; iPhone Safari and Android Chrome are the compatibility targets.
 - Layout adaptations: on wider viewports, keep a centered phone-width reader canvas rather than creating a desktop IA.
-- Touch/hover differences: touch is primary; hover is non-essential. Native browser selection handles remain browser-controlled. Native callout is disabled only on `여러 문장—탭` sentences, whose pointer gesture keeps vertical pan available.
+- Touch/hover differences: touch is primary; hover is non-essential. Native browser selection handles remain browser-controlled. Native callout is disabled only on `여러 문장 단위로 선택` sentences, whose pointer gesture keeps vertical pan available.
 
 ## Interaction states
 
@@ -149,7 +150,7 @@
 ## Content voice
 
 - Tone: concise, neutral, conversational Korean that assumes book-club familiarity.
-- Terminology: use the explicit labels `한 문단`, `여러 문장—탭`, `여러 문장—드래그`, `한 문장`, `여러 단어`.
+- Terminology: use the explicit labels `한 문단`, `여러 문장 단위로 선택`, `여러 문장 드래그로 선택`, `한 문장`, `여러 단어`.
 - Microcopy rules: tutorial overlays state only the gesture and next action; do not explain hypotheses, advantages, or disadvantages during the experience.
 
 ## Implementation constraints

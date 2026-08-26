@@ -20,8 +20,8 @@ const BOOK = {
 
 const EXPERIENCES = [
   { id: "paragraph", name: "한 문단", mode: "tap", tutorial: "댓글을 보고 싶은 문단을 탭하세요. 같은 문단에 새 댓글도 남길 수 있어요." },
-  { id: "sentence-tap", name: "여러 문장—탭", mode: "tap", tutorial: "한 번 탭하면 댓글을 보고, 문장을 길게 누르면 범위 선택을 시작해요. 마지막 문장을 탭한 뒤 ‘댓글 달기’를 누르세요." },
-  { id: "sentence-drag", name: "여러 문장—드래그", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 선택한 문장 전체에 댓글을 달 수 있어요." },
+  { id: "sentence-tap", name: "여러 문장 단위로 선택", mode: "tap", tutorial: "한 번 탭하면 댓글을 볼 수 있어요. 새 댓글은 시작 문장을 길게 누르고, 마지막 문장을 탭한 뒤 ‘댓글 달기’를 누르세요." },
+  { id: "sentence-drag", name: "여러 문장 드래그로 선택", mode: "drag", tutorial: "본문을 길게 누른 뒤 선택 핸들을 움직이세요. 선택된 여러 문장에 댓글을 달 수 있어요." },
   { id: "sentence", name: "한 문장", mode: "tap", tutorial: "댓글을 보고 남기고 싶은 문장을 한 번 탭하세요." },
   { id: "words", name: "여러 단어", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 공백으로 구분된 단어 단위로 범위를 고를 수 있어요." }
 ];
@@ -197,7 +197,10 @@ function renderStart() {
   app.innerHTML = `<section class="welcome">
     <p class="brand" aria-label="여백">여백</p>
     <h2>댓글 단위 체험</h2>
-    <p>같은 글을 다섯 가지 방식으로 읽으며 댓글을 보고 남겨보세요.</p>
+    <div class="welcome-copy">
+      <p>교환 독서할 때처럼, 책을 읽으며 댓글을 달아볼 거예요.</p>
+      <p>다섯 가지를 체험한 뒤 가장 마음에 드는 방식과 불편한 방식을 알려주세요.</p>
+    </div>
     <button class="primary-button" id="start-button">체험 시작</button>
   </section>`;
   document.getElementById("start-button").addEventListener("click", () => {
@@ -312,7 +315,7 @@ function renderSentence(text, passageIndex, sentenceIndex, sentence, annotations
   }
   const experienceId = currentExperience().id;
   const sentenceLabel = experienceId === "sentence-tap"
-    ? "한 번 누르면 문장 댓글 보기, 길게 누르면 범위 선택 시작"
+    ? "한 번 누르면 댓글 보기, 길게 누르면 여러 문장 선택 시작"
     : "문장 댓글 보기 및 남기기";
   const sentenceInteractive = ["sentence-tap", "sentence"].includes(experienceId) ? ` role="button" tabindex="0" aria-label="${sentenceLabel}"` : "";
   return `<span class="sentence" data-passage="${passageIndex}" data-sentence="${sentenceIndex}" data-start="${sentence.start}" data-end="${sentence.end}"${sentenceInteractive}>${inner}</span>${sentenceIndex < SENTENCES[passageIndex].length - 1 ? " " : ""}`;
@@ -404,6 +407,35 @@ function bindReaderEvents() {
     };
     return;
   }
+  if (experience.id === "sentence") {
+    let previewSentence = null;
+    const clearPressPreview = () => {
+      previewSentence?.classList.remove("is-press-preview");
+      previewSentence = null;
+    };
+    const onPointerDown = event => {
+      const sentence = event.target.closest(".sentence");
+      if (!sentence || !event.isPrimary || event.button !== 0) return;
+      clearPressPreview();
+      previewSentence = sentence;
+      previewSentence.classList.add("is-press-preview");
+    };
+    const onPointerEnd = () => clearPressPreview();
+    reader.addEventListener("pointerdown", onPointerDown);
+    reader.addEventListener("pointerup", onPointerEnd);
+    reader.addEventListener("pointercancel", onPointerEnd);
+    window.addEventListener("scroll", onPointerEnd, { passive: true });
+    readerCleanup = () => {
+      clearPressPreview();
+      reader.removeEventListener("click", onClick);
+      reader.removeEventListener("keydown", onKeydown);
+      reader.removeEventListener("pointerdown", onPointerDown);
+      reader.removeEventListener("pointerup", onPointerEnd);
+      reader.removeEventListener("pointercancel", onPointerEnd);
+      window.removeEventListener("scroll", onPointerEnd);
+    };
+    return;
+  }
   if (experience.mode === "drag") {
     const onSelectionEnd = () => scheduleSelectionRead();
     const onViewportChange = () => scheduleSelectionRead();
@@ -491,7 +523,7 @@ function selectTappedSentence(sentence) {
     tapRange = { anchor: target, complete: false };
     document.querySelectorAll(".selected-range").forEach(node => node.classList.remove("selected-range"));
     sentence.classList.add("selected-range");
-    announce("시작 문장을 선택했습니다. 마지막 문장을 선택하세요.");
+    showSelectionNotice("시작 문장을 선택했어요. 마지막 문장을 탭하세요.");
     return;
   }
   const anchor = tapRange.anchor;
@@ -502,7 +534,7 @@ function selectTappedSentence(sentence) {
   document.querySelectorAll(".selected-range").forEach(node => node.classList.remove("selected-range"));
   markSentencesInRange(tapRange);
   showContextAction(sentence.getBoundingClientRect(), tapRange);
-  announce("문장 범위를 선택했습니다. 댓글 달기 버튼을 누르세요.");
+  showSelectionNotice("범위를 선택했어요. ‘댓글 달기’를 누르세요.");
 }
 
 function sentenceRangesIn(range) {
@@ -731,7 +763,6 @@ function showSelectionNotice(message) {
   clearTimeout(noticeTimer);
   notice.textContent = message;
   notice.hidden = false;
-  announce(message);
   noticeTimer = window.setTimeout(() => { notice.hidden = true; }, 2600);
 }
 
@@ -1016,6 +1047,27 @@ function bindZoomPrevention() {
   }, { passive: false });
 }
 
+function bindVisualViewportSynchronization() {
+  const root = document.documentElement;
+  const syncViewport = () => {
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport?.height || window.innerHeight;
+    const layoutHeight = root.clientHeight || window.innerHeight;
+    const visualBottom = viewport
+      ? Math.max(0, layoutHeight - viewport.height - viewport.offsetTop)
+      : 0;
+    root.style.setProperty("--visual-viewport-height", `${visibleHeight}px`);
+    root.style.setProperty("--visual-viewport-bottom", `${visualBottom}px`);
+    root.style.setProperty("--sheet-max-height", `${Math.min(visibleHeight * .82, 720)}px`);
+    root.style.setProperty("--short-sheet-max-height", `${visibleHeight * .55}px`);
+  };
+  window.addEventListener("resize", syncViewport, { passive: true });
+  window.visualViewport?.addEventListener("resize", syncViewport, { passive: true });
+  window.visualViewport?.addEventListener("scroll", syncViewport, { passive: true });
+  syncViewport();
+}
+
 bindZoomPrevention();
+bindVisualViewportSynchronization();
 render();
 if (state.screen === "reader") window.setTimeout(maybeShowTutorial, 0);
