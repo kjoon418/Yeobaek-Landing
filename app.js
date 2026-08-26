@@ -19,7 +19,7 @@ const BOOK = {
 };
 
 const EXPERIENCES = [
-  { id: "paragraph", name: "현재 문단 방식", mode: "tap", tutorial: "댓글을 보고 싶은 문단을 탭하세요. 같은 문단에 새 댓글도 남길 수 있어요." },
+  { id: "paragraph", name: "한 문단", mode: "tap", tutorial: "댓글을 보고 싶은 문단을 탭하세요. 같은 문단에 새 댓글도 남길 수 있어요." },
   { id: "sentence-tap", name: "여러 문장—탭", mode: "tap", tutorial: "한 번 탭하면 댓글을 보고, 문장을 길게 누르면 범위 선택을 시작해요. 마지막 문장을 탭한 뒤 ‘댓글 달기’를 누르세요." },
   { id: "sentence-drag", name: "여러 문장—드래그", mode: "drag", tutorial: "본문을 길게 누르고 선택 핸들을 움직이세요. 선택한 문장 전체에 댓글을 달 수 있어요." },
   { id: "sentence", name: "한 문장", mode: "tap", tutorial: "댓글을 보고 남기고 싶은 문장을 한 번 탭하세요." },

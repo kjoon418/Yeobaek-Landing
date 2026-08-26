@@ -115,7 +115,7 @@
   - Comment ranges use ordered start/end endpoints (`startPassage`, `startOffset`, `endPassage`, `endOffset`) so sentence-tap, sentence-drag, and word selection can cross paragraph boundaries. Existing session data using one-paragraph ranges is normalized when read.
   - Word selection snaps to maximal non-whitespace tokens (`/\S+/gu`): punctuation remains part of its adjacent token, outer whitespace is excluded, and whitespace between selected tokens remains in the range.
 - Variants and states:
-  - `현재 문단 방식`: tapping a paragraph opens its comments/input.
+  - `한 문단`: tapping a paragraph opens its comments/input.
   - `여러 문장—탭`: tap once to view comments (including the existing overlap range chooser), or long-press any sentence to set the range start. Tap the end sentence in either direction, including across paragraphs, then use contextual `댓글 달기`. Keyboard Enter/Space remains comment viewing rather than range selection.
   - `여러 문장—드래그`: long-press/drag across one or more paragraphs, normalize the visible native selection to whole-sentence bounds, then use contextual `댓글 달기`.
   - `한 문장`: one tap opens the sentence's comments/input.
@@ -149,7 +149,7 @@
 ## Content voice
 
 - Tone: concise, neutral, conversational Korean that assumes book-club familiarity.
-- Terminology: use the explicit labels `현재 문단 방식`, `여러 문장—탭`, `여러 문장—드래그`, `한 문장`, `여러 단어`.
+- Terminology: use the explicit labels `한 문단`, `여러 문장—탭`, `여러 문장—드래그`, `한 문장`, `여러 단어`.
 - Microcopy rules: tutorial overlays state only the gesture and next action; do not explain hypotheses, advantages, or disadvantages during the experience.
 
 ## Implementation constraints
